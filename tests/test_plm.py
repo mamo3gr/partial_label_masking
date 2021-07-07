@@ -1,4 +1,6 @@
 import numpy as np
+import tensorflow as tf
+from pytest_mock import MockerFixture
 
 from plm import PartialLabelMaskingLoss
 
@@ -53,3 +55,33 @@ def multi_hot_with_n_positives(
             )
         ]
     ).T
+
+
+def test_call(mocker: MockerFixture):
+    batch_size = 32
+    n_classes = 9
+
+    shape = (batch_size, n_classes)
+    mask = np.where(np.random.rand(*shape) > 0.5, 1, 0).astype(np.int)
+    y_true = np.where(np.random.rand(*shape) > 0.5, 1, 0).astype(np.int)
+    y_pred = np.random.rand(*shape)
+
+    bce = -(y_true * np.log(y_pred) + (1 - y_true) * np.log(1 - y_pred))
+    bce_expect = np.sum(bce * mask)
+
+    positive_ratio = np.random.rand(n_classes)
+    loss = PartialLabelMaskingLoss(positive_ratio=positive_ratio)
+
+    mock_generate_mask = mocker.patch.object(
+        loss,
+        "generate_mask",
+        return_value=tf.convert_to_tensor(mask, dtype=tf.int32, name="mask"),
+    )
+
+    bce_actual = loss.call(
+        tf.convert_to_tensor(y_true, dtype=tf.int32, name="y_true"),
+        tf.convert_to_tensor(y_pred, dtype=tf.float32, name="y_pred"),
+    )
+
+    mock_generate_mask.assert_called_once()
+    np.testing.assert_allclose(bce_actual, bce_expect, rtol=1e-4)

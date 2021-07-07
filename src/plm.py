@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 
-class PartialLabelMaskingLoss(tf.keras.losses.BinaryCrossentropy):
+class PartialLabelMaskingLoss(tf.keras.losses.Loss):
     def __init__(self, positive_ratio, **kwargs):
         super(PartialLabelMaskingLoss, self).__init__(**kwargs)
         self.positive_ratio = tf.convert_to_tensor(positive_ratio, dtype=tf.float32)
@@ -10,7 +10,15 @@ class PartialLabelMaskingLoss(tf.keras.losses.BinaryCrossentropy):
         )
 
     def call(self, y_true, y_pred):
-        raise NotImplementedError
+        # sample- and element-(class-) wise binary cross entropy
+        y_true = tf.cast(y_true, tf.float32)
+        bce = -(y_true * tf.math.log(y_pred) + (1 - y_true) * tf.math.log(1 - y_pred))
+
+        # mask it
+        mask = self.generate_mask(y_true)
+        bce *= tf.cast(mask, tf.float32)
+
+        return tf.reduce_sum(bce)
 
     def generate_mask(self, y_true):
         n_samples = y_true.shape[0]
