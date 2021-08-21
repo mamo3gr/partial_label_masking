@@ -2,12 +2,13 @@ import tensorflow as tf
 
 
 class PartialLabelMaskingLoss(tf.keras.losses.Loss):
-    def __init__(self, positive_ratio, **kwargs):
+    def __init__(self, positive_ratio, change_rate, **kwargs):
         super(PartialLabelMaskingLoss, self).__init__(**kwargs)
         self.positive_ratio = tf.convert_to_tensor(positive_ratio, dtype=tf.float32)
         self.positive_ratio_ideal = tf.convert_to_tensor(
             positive_ratio, dtype=tf.float32
         )
+        self.change_rate = change_rate
 
     def call(self, y_true, y_pred):
         # sample- and element-(class-) wise binary cross entropy
@@ -60,3 +61,10 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
         return tf.where(
             tf.random.uniform(shape=shape, minval=0.0, maxval=1.0) <= prob, 1, 0
         )
+
+    def update_ratio(self):
+        prob_diff = self._compute_probabilities_difference()
+        self.positive_ratio_ideal *= tf.exp(self.change_rate * prob_diff)
+
+    def _compute_probabilities_difference(self):
+        raise NotImplementedError

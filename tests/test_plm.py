@@ -15,8 +15,11 @@ def test_generate_mask():
     positive_ratio = n_positives / n_negatives
     positive_ratio_ideal = [0.5, 1.2, 1.0]
     relative_tolerance = 0.05
+    change_rate = 1e-2
 
-    loss = PartialLabelMaskingLoss(positive_ratio=positive_ratio)
+    loss = PartialLabelMaskingLoss(
+        positive_ratio=positive_ratio, change_rate=change_rate
+    )
     loss.positive_ratio_ideal = positive_ratio_ideal
     mask_actual = loss.generate_mask(y_true).numpy()
 
@@ -70,7 +73,10 @@ def test_call(mocker: MockerFixture):
     bce_expect = np.sum(bce * mask)
 
     positive_ratio = np.random.rand(n_classes)
-    loss = PartialLabelMaskingLoss(positive_ratio=positive_ratio)
+    change_rate = 1e-2
+    loss = PartialLabelMaskingLoss(
+        positive_ratio=positive_ratio, change_rate=change_rate
+    )
 
     mock_generate_mask = mocker.patch.object(
         loss,
@@ -85,3 +91,33 @@ def test_call(mocker: MockerFixture):
 
     mock_generate_mask.assert_called_once()
     np.testing.assert_allclose(bce_actual, bce_expect, rtol=1e-4)
+
+
+def test_update_ratio(mocker: MockerFixture):
+    n_classes = 100
+    positive_ratio = np.random.rand(n_classes)
+    change_rate = 1e-2
+
+    loss = PartialLabelMaskingLoss(
+        positive_ratio=positive_ratio, change_rate=change_rate
+    )
+
+    # positive_ratio_ideal should be initialized by positive_ratio
+    np.testing.assert_allclose(loss.positive_ratio_ideal.numpy(), positive_ratio)
+
+    probabilities_difference = np.random.rand(n_classes)
+    mock_compute_probabilities_difference = mocker.patch.object(
+        loss,
+        "_compute_probabilities_difference",
+        return_value=tf.convert_to_tensor(
+            probabilities_difference, dtype=tf.float32, name="prob_diff"
+        ),
+    )
+
+    loss.update_ratio()
+    mock_compute_probabilities_difference.assert_called_once()
+    np.testing.assert_allclose(
+        loss.positive_ratio_ideal.numpy(),
+        positive_ratio * np.exp(change_rate * probabilities_difference),
+        rtol=1e-4,
+    )
