@@ -121,3 +121,26 @@ def test_update_ratio(mocker: MockerFixture):
         positive_ratio * np.exp(change_rate * probabilities_difference),
         rtol=1e-4,
     )
+
+
+def test__compute_histogram():
+    positive_ratio = [0.1, 0.2, 0.3]
+    change_rate = 1e-2
+    n_classes = 2
+    n_bins = 3
+
+    loss = PartialLabelMaskingLoss(
+        positive_ratio=positive_ratio, change_rate=change_rate, n_bins=n_bins
+    )
+
+    # shape == (batch_size, n_classes)
+    array = np.array([[1.0, 0.0], [0.5, 0.7], [0.2, 0.3]])
+
+    # shape == (n_bins, n_classes)
+    histogram_expect = np.array([[1, 2], [1, 0], [1, 1]])
+
+    histogram_actual = loss._compute_histogram(
+        tf.convert_to_tensor(array, dtype=tf.float32)
+    )
+    assert histogram_actual.shape == (n_bins, n_classes)
+    np.testing.assert_allclose(histogram_actual.numpy(), histogram_expect)

@@ -2,13 +2,17 @@ import tensorflow as tf
 
 
 class PartialLabelMaskingLoss(tf.keras.losses.Loss):
-    def __init__(self, positive_ratio, change_rate, **kwargs):
+    def __init__(self, positive_ratio, change_rate, n_bins=10, **kwargs):
         super(PartialLabelMaskingLoss, self).__init__(**kwargs)
+        self._eps = tf.keras.backend.epsilon()
+
         self.positive_ratio = tf.convert_to_tensor(positive_ratio, dtype=tf.float32)
         self.positive_ratio_ideal = tf.convert_to_tensor(
             positive_ratio, dtype=tf.float32
         )
         self.change_rate = change_rate
+        self.n_bins = n_bins
+        self.edges = tf.linspace(start=0.0, stop=1.0 + self._eps, num=n_bins + 1)
 
     def call(self, y_true, y_pred):
         # sample- and element-(class-) wise binary cross entropy
@@ -68,3 +72,28 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
 
     def _compute_probabilities_difference(self):
         raise NotImplementedError
+
+    def _compute_histogram(self, array):
+        """
+        Compute histogram of confidence for each class.
+
+        Args:
+            array: prediction (confidence) for each sample and class.
+                shape is (n_samples, n_classes)
+
+        Returns:
+            histogram whose shape is (n_bins, n_classes)
+        """
+        array = tf.cast(array, self.edges.dtype)
+        hist = tf.stack(
+            [
+                tf.reduce_sum(
+                    tf.where(
+                        (self.edges[i] <= array) & (array < self.edges[i + 1]), 1, 0
+                    ),
+                    axis=0,
+                )
+                for i in range(self.n_bins)
+            ]
+        )
+        return hist
