@@ -1,3 +1,5 @@
+from typing import Dict
+
 import numpy as np
 import tensorflow as tf
 
@@ -6,10 +8,11 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
     def __init__(self, positive_ratio, change_rate, n_bins=10, **kwargs):
         super(PartialLabelMaskingLoss, self).__init__(**kwargs)
         self._eps = tf.keras.backend.epsilon()
+        self._floatx = tf.keras.backend.floatx()
 
-        self.positive_ratio = tf.convert_to_tensor(positive_ratio, dtype=tf.float32)
+        self.positive_ratio = tf.convert_to_tensor(positive_ratio, dtype=self._floatx)
         self.positive_ratio_ideal = tf.convert_to_tensor(
-            positive_ratio, dtype=tf.float32
+            positive_ratio, dtype=self._floatx
         )
         self.change_rate = change_rate
         self.n_bins = n_bins
@@ -25,13 +28,7 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
         self.hist_neg_pred = np.zeros((self.n_bins, self.n_classes))
 
     def call(self, y_true, y_pred):
-        # sample- and element-(class-) wise binary cross entropy
-        y_true = tf.cast(y_true, tf.float32)
-        bce = -(y_true * tf.math.log(y_pred) + (1 - y_true) * tf.math.log(1 - y_pred))
-
-        # mask it
-        mask = self.generate_mask(y_true)
-        bce *= tf.cast(mask, tf.float32)
+        y_true = tf.cast(y_true, y_pred.dtype)
 
         # compute and store ground-truth and predicted probability distribution
         (
@@ -44,6 +41,18 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
         self.hist_pos_pred += hist_neg_true
         self.hist_neg_true += hist_pos_pred
         self.hist_neg_pred += hist_neg_true
+
+        # sample- and element-(class-) wise binary cross entropy
+        y_true = tf.clip_by_value(y_true, 0.0, 1.0)
+        y_pred = tf.clip_by_value(y_pred, 0.0, 1.0)
+        bce = -(
+            y_true * tf.math.log(y_pred + self._eps)
+            + (1 - y_true) * tf.math.log(1 - y_pred + self._eps)
+        )
+
+        # mask it
+        mask = self.generate_mask(y_true)
+        bce *= tf.cast(mask, self._floatx)
 
         return tf.reduce_sum(bce)
 
@@ -90,6 +99,7 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
 
     def update_ratio(self):
         prob_diff = self._compute_probabilities_difference()
+        prob_diff = tf.cast(prob_diff, self._floatx)
         self.positive_ratio_ideal *= tf.exp(self.change_rate * prob_diff)
 
         self._clear_probability_histogram()
@@ -170,3 +180,15 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
             )
 
         return hist_pos_true, hist_neg_true, hist_pos_pred, hist_neg_pred
+
+
+class UpdateRatio(tf.keras.callbacks.Callback):
+    def on_epoch_end(self, epoch, logs=None):
+        self._record_ratio()
+        self.model.loss.update_ratio()
+
+    def _record_ratio(self):
+        key = "positive_ratio_ideal"
+        history: Dict = self.model.history.history
+        positive_ratio_ideal = self.model.loss.positive_ratio_ideal.numpy().tolist()
+        history.setdefault(key, []).append(positive_ratio_ideal)

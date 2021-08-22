@@ -3,7 +3,7 @@ import tensorflow as tf
 from numpy.testing import assert_allclose
 from pytest_mock import MockerFixture
 
-from plm import PartialLabelMaskingLoss
+from plm import PartialLabelMaskingLoss, UpdateRatio
 
 
 # FIXME: This test would occasionally fail due to randomness
@@ -222,3 +222,50 @@ def test__compute_probabilities_difference():
     )
     prob_diff = loss._compute_probabilities_difference()
     assert_allclose(prob_diff > 0, np.array([True, False]))
+
+
+def test_train_toy_model():
+    mnist = tf.keras.datasets.mnist
+
+    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+    x_train, x_test = x_train / 255.0, x_test / 255.0
+
+    # define model
+    model = tf.keras.models.Sequential(
+        [
+            tf.keras.layers.Flatten(input_shape=(28, 28)),
+            tf.keras.layers.Dense(128, activation="relu"),
+            tf.keras.layers.Dropout(0.2),
+            tf.keras.layers.Dense(10, activation="sigmoid"),
+        ]
+    )
+
+    # multi-(one-, actually) hot encoding
+    encoder = tf.keras.layers.experimental.preprocessing.CategoryEncoding()
+    encoder.adapt(y_train.astype(np.int))
+    y_train_vec = encoder(y_train.astype(np.int)).numpy().astype(np.int)
+
+    # set up loss
+    n_samples = y_train_vec.shape[0]
+    positive_ratio = np.sum(y_train_vec > 0, axis=0) / n_samples
+    change_rate = 1e-2
+    n_bins = 10
+    loss_fn = PartialLabelMaskingLoss(
+        positive_ratio=positive_ratio, change_rate=change_rate, n_bins=n_bins
+    )
+
+    # compile and train model
+    epochs = 3
+    model.compile(optimizer=tf.keras.optimizers.Adam(), loss=loss_fn, run_eagerly=True)
+    update_ratio = UpdateRatio()
+    history = model.fit(
+        x_train, y_train_vec, epochs=epochs, callbacks=[update_ratio], verbose=0
+    )
+
+    # loss should continue to decrease
+    loss_history = history.history["loss"]
+    assert all(np.diff(loss_history) < 0)
+
+    # ideal ratio should be recorded
+    ratio_history = history.history["positive_ratio_ideal"]
+    assert len(ratio_history) == epochs
