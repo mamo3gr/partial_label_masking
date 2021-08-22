@@ -15,6 +15,15 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
         self.n_bins = n_bins
         self.edges = tf.linspace(start=0.0, stop=1.0 + self._eps, num=n_bins + 1)
 
+        self.n_classes = self.positive_ratio.shape[0]
+        self._clear_probability_histogram()
+
+    def _clear_probability_histogram(self):
+        self.hist_pos_true = np.zeros((self.n_bins, self.n_classes))
+        self.hist_pos_pred = np.zeros((self.n_bins, self.n_classes))
+        self.hist_neg_true = np.zeros((self.n_bins, self.n_classes))
+        self.hist_neg_pred = np.zeros((self.n_bins, self.n_classes))
+
     def call(self, y_true, y_pred):
         # sample- and element-(class-) wise binary cross entropy
         y_true = tf.cast(y_true, tf.float32)
@@ -23,6 +32,18 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
         # mask it
         mask = self.generate_mask(y_true)
         bce *= tf.cast(mask, tf.float32)
+
+        # compute and store ground-truth and predicted probability distribution
+        (
+            hist_pos_true,
+            hist_neg_true,
+            hist_pos_pred,
+            hist_neg_pred,
+        ) = self._compute_histogram(y_true, y_pred)
+        self.hist_pos_true += hist_pos_true
+        self.hist_pos_pred += hist_neg_true
+        self.hist_neg_true += hist_pos_pred
+        self.hist_neg_pred += hist_neg_true
 
         return tf.reduce_sum(bce)
 
@@ -71,14 +92,33 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
         prob_diff = self._compute_probabilities_difference()
         self.positive_ratio_ideal *= tf.exp(self.change_rate * prob_diff)
 
-    def _compute_probabilities_difference(self):
-        # normalize histogram
-        self.prob_hist_true /= tf.reduce_sum(self.prob_hist_true)
-        self.prob_hist_pred /= tf.reduce_sum(self.prob_hist_pred)
+        self._clear_probability_histogram()
 
-        kl_div = self._kullback_leibler_divergence(
-            self.prob_hist_pred, self.prob_hist_true
+    def _compute_probabilities_difference(self):
+        hist_diff_pos = self._compute_probabilities_difference__(
+            self.hist_pos_true, self.hist_pos_pred
         )
+        hist_diff_neg = self._compute_probabilities_difference__(
+            self.hist_neg_true, self.hist_neg_pred
+        )
+
+        # normalize
+        hist_diff_pos = (hist_diff_pos - np.mean(hist_diff_pos)) / (
+            np.std(hist_diff_pos) + self._eps
+        )
+        hist_diff_neg = (hist_diff_neg - np.mean(hist_diff_neg)) / (
+            np.std(hist_diff_neg) + self._eps
+        )
+
+        return hist_diff_pos - hist_diff_neg
+
+    def _compute_probabilities_difference__(self, hist_true, hist_pred):
+        # normalize histogram
+        hist_true /= np.sum(hist_true, axis=0)
+        hist_pred /= np.sum(hist_pred, axis=0)
+
+        kl_div = self._kullback_leibler_divergence(hist_pred, hist_true)
+        return kl_div
 
     def _kullback_leibler_divergence(self, p, q):
         """
@@ -91,8 +131,8 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
             kl_div: Kullback-Leibler divergence (relative entropy from q to p)
         """
         # FIXME: affirm calculation of KL divergence when q contains zero(s).
-        q = tf.where(q > 0, q, self._eps)
-        kl_div = tf.reduce_sum(p * tf.math.log(p / q), axis=0)
+        q = np.where(q > 0, q, self._eps)
+        kl_div = np.sum(p * np.log(p / q + self._eps), axis=0)
         return kl_div
 
     def _compute_histogram(self, y_true, y_pred):

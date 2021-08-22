@@ -187,3 +187,38 @@ def test__compute_histogram():
     assert_allclose(hist_actual_neg_true, hist_expect_neg_true)
     assert_allclose(hist_actual_pos_pred, hist_expect_pos_pred)
     assert_allclose(hist_actual_neg_pred, hist_expect_neg_pred)
+
+
+def test__compute_probabilities_difference():
+    positive_ratio = [0.1, 0.2]
+    change_rate = 1e-2
+    # n_classes = 2
+    n_bins = 3
+
+    loss = PartialLabelMaskingLoss(
+        positive_ratio=positive_ratio, change_rate=change_rate, n_bins=n_bins
+    )
+
+    # class[0] is under-predicted and class[1] is over-predicted
+    # fmt: off
+    y_true = np.array(
+        [
+            [0, 1],
+            [1, 0],
+            [1, 0],
+            [1, 0]
+        ], np.int)
+    y_pred = np.array(
+        [
+            [0.0, 0.9],
+            [0.1, 0.7],
+            [0.3, 0.8],
+            [0.2, 0.6]
+        ], np.float)
+    # fmt: on
+
+    loss.call(
+        tf.convert_to_tensor(y_true, tf.int32), tf.convert_to_tensor(y_pred, tf.float32)
+    )
+    prob_diff = loss._compute_probabilities_difference()
+    assert_allclose(prob_diff > 0, np.array([True, False]))
