@@ -1,5 +1,3 @@
-FLAKE8_CONFIG_FILE = .flake8
-
 .PHONY: dep
 dep:
 	@poetry install --no-root
@@ -12,7 +10,7 @@ format:
 .PHONY: lint
 lint:
 	@poetry run black --check .
-	@poetry run flake8 --config $(FLAKE8_CONFIG_FILE) .
+	@poetry run flake8 .
 	@poetry run mypy .
 
 .PHONY: test
