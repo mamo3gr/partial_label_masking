@@ -20,6 +20,8 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
         self.n_classes = self.positive_ratio.shape[0]
         self._clear_probability_histogram()
 
+        self.store_hist = True
+
     def _clear_probability_histogram(self):
         self.hist_pos_true = np.zeros((self.n_bins, self.n_classes))
         self.hist_pos_pred = np.zeros((self.n_bins, self.n_classes))
@@ -30,16 +32,17 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
         y_true = tf.cast(y_true, y_pred.dtype)
 
         # compute and store ground-truth and predicted probability distribution
-        (
-            hist_pos_true,
-            hist_neg_true,
-            hist_pos_pred,
-            hist_neg_pred,
-        ) = self._compute_histogram(y_true, y_pred)
-        self.hist_pos_true += hist_pos_true
-        self.hist_pos_pred += hist_neg_true
-        self.hist_neg_true += hist_pos_pred
-        self.hist_neg_pred += hist_neg_true
+        if self.store_hist:
+            (
+                hist_pos_true,
+                hist_neg_true,
+                hist_pos_pred,
+                hist_neg_pred,
+            ) = self._compute_histogram(y_true, y_pred)
+            self.hist_pos_true += hist_pos_true
+            self.hist_pos_pred += hist_neg_true
+            self.hist_neg_true += hist_pos_pred
+            self.hist_neg_pred += hist_neg_true
 
         # sample- and element-(class-) wise binary cross entropy
         y_true = tf.clip_by_value(y_true, 0.0, 1.0)
@@ -181,7 +184,7 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
         return hist_pos_true, hist_neg_true, hist_pos_pred, hist_neg_pred
 
 
-class UpdateRatio(tf.keras.callbacks.Callback):
+class PartialLabelMaskingCallback(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         self._record_ratio()
         self.model.loss.update_ratio()
@@ -191,3 +194,11 @@ class UpdateRatio(tf.keras.callbacks.Callback):
         history: Dict = self.model.history.history
         positive_ratio_ideal = self.model.loss.positive_ratio_ideal.numpy().tolist()
         history.setdefault(key, []).append(positive_ratio_ideal)
+
+    def on_train_batch_begin(self, batch, logs=None):
+        # on training set, store histogram
+        self.model.loss.store_hist = True
+
+    def on_test_batch_begin(self, batch, logs=None):
+        # on validation set, DO NOT store histogram
+        self.model.loss.store_hist = False

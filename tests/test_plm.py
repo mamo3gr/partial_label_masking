@@ -3,7 +3,7 @@ import tensorflow as tf
 from numpy.testing import assert_allclose
 from pytest_mock import MockerFixture
 
-from plm import PartialLabelMaskingLoss, UpdateRatio
+from plm import PartialLabelMaskingCallback, PartialLabelMaskingLoss
 
 
 class TestPartialLabelMaskingLoss:
@@ -254,12 +254,18 @@ class TestPartialLabelMaskingLoss:
 
         # compile and train model
         epochs = 3
+        batch_size = 2048
         model.compile(
             optimizer=tf.keras.optimizers.Adam(), loss=loss_fn, run_eagerly=True
         )
-        update_ratio = UpdateRatio()
         history = model.fit(
-            x_train, y_train_vec, epochs=epochs, callbacks=[update_ratio], verbose=0
+            x_train,
+            y_train_vec,
+            epochs=epochs,
+            batch_size=batch_size,
+            callbacks=[PartialLabelMaskingCallback()],
+            validation_split=0.05,
+            verbose=0,
         )
 
         # loss should continue to decrease
