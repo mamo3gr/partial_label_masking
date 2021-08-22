@@ -1,3 +1,5 @@
+SOURCE_DIR = src
+
 .PHONY: dep
 dep:
 	@poetry install --no-root
@@ -15,4 +17,4 @@ lint:
 
 .PHONY: test
 test:
-	@PYTHONPATH=src poetry run pytest --cov=src tests/
+	@PYTHONPATH=$(SOURCE_DIR) poetry run pytest --cov=$(SOURCE_DIR) tests/
