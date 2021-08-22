@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 
 
@@ -71,29 +72,61 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
         self.positive_ratio_ideal *= tf.exp(self.change_rate * prob_diff)
 
     def _compute_probabilities_difference(self):
-        raise NotImplementedError
+        # normalize histogram
+        self.prob_hist_true /= tf.reduce_sum(self.prob_hist_true)
+        self.prob_hist_pred /= tf.reduce_sum(self.prob_hist_pred)
 
-    def _compute_histogram(self, array):
+        kl_div = self._kullback_leibler_divergence(
+            self.prob_hist_pred, self.prob_hist_true
+        )
+
+    def _kullback_leibler_divergence(self, p, q):
         """
-        Compute histogram of confidence for each class.
+        Kullback-Leibler divergence.
 
         Args:
-            array: prediction (confidence) for each sample and class.
-                shape is (n_samples, n_classes)
+            p, q: discrete probability distributions, whose shape is (n_bins, n_classes)
 
         Returns:
-            histogram whose shape is (n_bins, n_classes)
+            kl_div: Kullback-Leibler divergence (relative entropy from q to p)
         """
-        array = tf.cast(array, self.edges.dtype)
-        hist = tf.stack(
-            [
-                tf.reduce_sum(
-                    tf.where(
-                        (self.edges[i] <= array) & (array < self.edges[i + 1]), 1, 0
-                    ),
-                    axis=0,
-                )
-                for i in range(self.n_bins)
-            ]
-        )
-        return hist
+        # FIXME: affirm calculation of KL divergence when q contains zero(s).
+        q = tf.where(q > 0, q, self._eps)
+        kl_div = tf.reduce_sum(p * tf.math.log(p / q), axis=0)
+        return kl_div
+
+    def _compute_histogram(self, y_true, y_pred):
+        n_classes = y_true.shape[1]
+        n_bins = self.n_bins
+        value_range = [0.0, 1.0]
+
+        hist_pos_true = np.zeros((n_bins, n_classes), np.int)
+        hist_neg_true = np.zeros((n_bins, n_classes), np.int)
+        hist_pos_pred = np.zeros((n_bins, n_classes), np.int)
+        hist_neg_pred = np.zeros((n_bins, n_classes), np.int)
+
+        y_true = y_true.numpy()
+        y_pred = y_pred.numpy()
+
+        for class_i in range(n_classes):
+            y_true_class = y_true[:, class_i]
+            y_pred_class = y_pred[:, class_i]
+
+            pos_indices = y_true_class > 0
+            neg_indices = ~pos_indices
+
+            # NOTE: np.histogram returns *hist* and *bin_edges*
+            hist_pos_true[:, class_i], _ = np.histogram(
+                y_true_class[pos_indices], n_bins, value_range
+            )
+            hist_neg_true[:, class_i], _ = np.histogram(
+                y_true_class[neg_indices], n_bins, value_range
+            )
+            hist_pos_pred[:, class_i], _ = np.histogram(
+                y_pred_class[pos_indices], n_bins, value_range
+            )
+            hist_neg_pred[:, class_i], _ = np.histogram(
+                y_pred_class[neg_indices], n_bins, value_range
+            )
+
+        return hist_pos_true, hist_neg_true, hist_pos_pred, hist_neg_pred

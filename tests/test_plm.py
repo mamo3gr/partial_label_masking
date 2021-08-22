@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+from numpy.testing import assert_allclose
 from pytest_mock import MockerFixture
 
 from plm import PartialLabelMaskingLoss
@@ -124,23 +125,65 @@ def test_update_ratio(mocker: MockerFixture):
 
 
 def test__compute_histogram():
-    positive_ratio = [0.1, 0.2, 0.3]
+    positive_ratio = [0.1, 0.2]
     change_rate = 1e-2
-    n_classes = 2
+    # n_classes = 2
     n_bins = 3
 
     loss = PartialLabelMaskingLoss(
         positive_ratio=positive_ratio, change_rate=change_rate, n_bins=n_bins
     )
 
-    # shape == (batch_size, n_classes)
-    array = np.array([[1.0, 0.0], [0.5, 0.7], [0.2, 0.3]])
+    # fmt: off
+    y_true = np.array(
+        [
+            [0, 1],
+            [1, 0],
+            [1, 0]
+        ], np.int)
+    y_pred = np.array(
+        [
+            [0.0, 0.9],
+            [0.5, 0.2],
+            [0.7, 0.8]
+        ], np.float)
 
-    # shape == (n_bins, n_classes)
-    histogram_expect = np.array([[1, 2], [1, 0], [1, 1]])
+    hist_expect_pos_true = np.array(
+        [
+            [0, 0],
+            [0, 0],
+            [2, 1]
+        ], np.int)
+    hist_expect_neg_true = np.array(
+        [
+            [1, 2],
+            [0, 0],
+            [0, 0]
+        ], np.int)
+    hist_expect_pos_pred = np.array(
+        [
+            [0, 0],
+            [1, 0],
+            [1, 1]
+        ], np.int)
+    hist_expect_neg_pred = np.array(
+        [
+            [1, 1],
+            [0, 0],
+            [0, 1]
+        ], np.int)
+    # fmt: on
 
-    histogram_actual = loss._compute_histogram(
-        tf.convert_to_tensor(array, dtype=tf.float32)
+    (
+        hist_actual_pos_true,
+        hist_actual_neg_true,
+        hist_actual_pos_pred,
+        hist_actual_neg_pred,
+    ) = loss._compute_histogram(
+        tf.convert_to_tensor(y_true, tf.int32), tf.convert_to_tensor(y_pred, tf.float32)
     )
-    assert histogram_actual.shape == (n_bins, n_classes)
-    np.testing.assert_allclose(histogram_actual.numpy(), histogram_expect)
+
+    assert_allclose(hist_actual_pos_true, hist_expect_pos_true)
+    assert_allclose(hist_actual_neg_true, hist_expect_neg_true)
+    assert_allclose(hist_actual_pos_pred, hist_expect_pos_pred)
+    assert_allclose(hist_actual_neg_pred, hist_expect_neg_pred)
