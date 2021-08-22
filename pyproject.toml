@@ -15,7 +15,6 @@ mypy = "^0.910"
 black = {version = "^21.6b0", allow-prereleases = true}
 isort = {extras = ["pyproject"], version = "^5.9.1"}
 flake8 = "^3.9.2"
-pytest = "^6.2.4"
 pytest-cov = "^2.12.1"
 pytest-mock = "^3.6.1"
 
