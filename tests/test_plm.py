@@ -71,7 +71,7 @@ class TestPartialLabelMaskingLoss:
         y_pred = np.random.rand(*shape)
 
         bce = -(y_true * np.log(y_pred) + (1 - y_true) * np.log(1 - y_pred))
-        bce_expect = np.sum(bce * mask)
+        bce_expect = np.mean(bce * mask, axis=-1)
 
         positive_ratio = np.random.rand(n_classes)
         change_rate = 1e-2
