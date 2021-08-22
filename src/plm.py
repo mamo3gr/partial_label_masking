@@ -16,7 +16,6 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
         )
         self.change_rate = change_rate
         self.n_bins = n_bins
-        self.edges = tf.linspace(start=0.0, stop=1.0 + self._eps, num=n_bins + 1)
 
         self.n_classes = self.positive_ratio.shape[0]
         self._clear_probability_histogram()
