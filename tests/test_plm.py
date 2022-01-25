@@ -239,8 +239,10 @@ class TestPartialLabelMaskingLoss:
         )
 
         # multi-(one-, actually) hot encoding
-        encoder = tf.keras.layers.experimental.preprocessing.CategoryEncoding()
-        encoder.adapt(y_train.astype(np.int))
+        n_classes = 10
+        encoder = tf.keras.layers.CategoryEncoding(
+            num_tokens=n_classes, output_mode="one_hot"
+        )
         y_train_vec = encoder(y_train.astype(np.int)).numpy().astype(np.int)
 
         # set up loss
