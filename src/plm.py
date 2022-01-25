@@ -54,7 +54,7 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
 
         # mask it
         mask = self.generate_mask(y_true)
-        bce *= tf.cast(mask, self._floatx)
+        bce *= tf.cast(mask, bce.dtype)
 
         return tf.reduce_mean(bce, axis=-1)
 
