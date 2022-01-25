@@ -6,16 +6,21 @@ authors = ["Mamoru Miura <mamo3gr@gmail.com>"]
 license = "Apache 2.0"
 
 [tool.poetry.dependencies]
-python = "^3.7"
-tensorflow = "~2.4.0"
-keras = "^2.4.3"
+python = "^3.9"
+tensorflow = "2.6.*"
+keras = "*"
+pandas = "*"
+scikit-learn = "*"
+Pillow = "*"
+PyYAML = "*"
 
 [tool.poetry.dev-dependencies]
-mypy = "^0.910"
-black = {version = "^21.6b0", allow-prereleases = true}
-isort = {extras = ["pyproject"], version = "^5.9.1"}
-flake8 = "^3.9.2"
-pytest-cov = "^2.12.1"
+mypy = "*"
+black = "21.7b0"
+isort = {extras = ["pyproject"], version = "^5.10.1"}
+flake8 = "^4.0.1"
+pytest = "^6.2.5"
+pytest-cov = "^3.0.0"
 pytest-mock = "^3.6.1"
 
 [tool.isort]
@@ -25,5 +30,5 @@ profile = "black"
 ignore_missing_imports = true
 
 [build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
