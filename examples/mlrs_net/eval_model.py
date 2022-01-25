@@ -9,7 +9,7 @@ from examples.config import Config, load_config
 from examples.dataframe_loader import DataFrameLoader
 from examples.dataset_generator import DatasetGenerator
 from examples.model import create_model
-from examples.utils import set_gpu_memory_growth
+from examples.utils import get_y_true, set_gpu_memory_growth
 
 logger = getLogger(__name__)
 
@@ -22,7 +22,7 @@ def test_model(conf: Config):
 
     proba = model.predict(test_ds, verbose=1)
     y_pred = np.where(proba >= 0.5, 1, 0)
-    y_true = _get_y_true(test_ds)
+    y_true = get_y_true(test_ds)
     labels = conf.labels
     print(classification_report(y_true, y_pred, target_names=labels))
 
@@ -58,16 +58,6 @@ def _create_and_load_model(conf: Config):
     )
     model.load_weights(conf.model_path)
     return model
-
-
-def _get_y_true(ds):
-    """
-    References:
-        python - Extract target from Tensorflow PrefetchDataset - Stack Overflow
-        https://stackoverflow.com/a/68509722
-    """
-    y = list(map(lambda x: x[1], ds))
-    return np.concatenate(y, axis=0)
 
 
 def _parse_args():

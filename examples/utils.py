@@ -3,6 +3,7 @@ import os
 import tempfile
 from logging import getLogger
 
+import numpy as np
 import tensorflow as tf
 
 logger = getLogger(__name__)
@@ -66,3 +67,13 @@ def add_regularization(model, regularizer: tf.keras.regularizers.Regularizer):
 
 def date_string():
     return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+
+def get_y_true(dataset: tf.data.Dataset):
+    """
+    References:
+        python - Extract target from Tensorflow PrefetchDataset - Stack Overflow
+        https://stackoverflow.com/a/68509722
+    """
+    y = list(map(lambda x: x[1], dataset))
+    return np.concatenate(y, axis=0)
