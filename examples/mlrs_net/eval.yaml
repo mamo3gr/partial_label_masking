@@ -1,0 +1,72 @@
+csv_path: /home/mamo/work/MLRSNet/test70.csv
+image_dir: /home/mamo/work/MLRSNet/Images
+filename_col: image
+labels:
+  - airplane
+  - airport
+  - bare soil
+  - baseball diamond
+  - basketball court
+  - beach
+  - bridge
+  - buildings
+  - cars
+  - chaparral
+  - cloud
+  - containers
+  - crosswalk
+  - dense residential area
+  - desert
+  - dock
+  - factory
+  - field
+  - football field
+  - forest
+  - freeway
+  - golf course
+  - grass
+  - greenhouse
+  - gully
+  - habor
+  - intersection
+  - island
+  - lake
+  - mobile home
+  - mountain
+  - overpass
+  - park
+  - parking lot
+  - parkway
+  - pavement
+  - railway
+  - railway station
+  - river
+  - road
+  - roundabout
+  - runway
+  - sand
+  - sea
+  - ships
+  - snow
+  - snowberg
+  - sparse residential area
+  - stadium
+  - swimming pool
+  - tanks
+  - tennis court
+  - terrace
+  - track
+  - trail
+  - transmission tower
+  - trees
+  - water
+  - wetland
+  - wind turbine
+image_height: 224
+image_width: 224
+batch_size: 256
+random_seed: 42
+validation_ratio: 0.333
+weight_decay: 5.0e-4
+epochs: 1
+model_path: models/mlrs_net/weights.hdf5
