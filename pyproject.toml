@@ -13,6 +13,8 @@ pandas = "*"
 scikit-learn = "*"
 Pillow = "*"
 PyYAML = "*"
+jupyter = "*"
+matplotlib = "*"
 
 [tool.poetry.dev-dependencies]
 mypy = "*"
