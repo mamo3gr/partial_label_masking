@@ -1,3 +1,5 @@
+from typing import Any, Tuple
+
 import tensorflow as tf
 from tensorflow.keras import Model
 from tensorflow.keras.layers import Conv2D, Dense, Flatten
@@ -8,20 +10,7 @@ from examples.utils import set_gpu_memory_growth
 def train_model():
     set_gpu_memory_growth()
 
-    mnist = tf.keras.datasets.mnist
-    (x_train, y_train), (x_test, y_test) = mnist.load_data()
-    x_train, x_test = x_train / 255.0, x_test / 255.0
-
-    x_train = x_train[..., tf.newaxis]
-    x_test = x_test[..., tf.newaxis]
-
-    train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train))
-    shuffle_buffer_size = len(train_ds)
-    train_ds = train_ds.shuffle(buffer_size=shuffle_buffer_size)
-    batch_size = 1024
-    train_ds = train_ds.batch(batch_size=batch_size)
-
-    test_ds = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(batch_size)
+    train_ds, test_ds = _create_train_and_test_datasets()
 
     model = MyModel()
     loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
@@ -86,6 +75,26 @@ class MyModel(Model):
         x = self.flatten(x)
         x = self.d1(x)
         return self.d2(x)
+
+
+def _create_train_and_test_datasets() -> Tuple[Any, Any]:
+    mnist = tf.keras.datasets.mnist
+    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+
+    x_train, x_test = x_train / 255.0, x_test / 255.0
+
+    x_train = x_train[..., tf.newaxis]
+    x_test = x_test[..., tf.newaxis]
+
+    train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train))
+    shuffle_buffer_size = len(train_ds)
+    train_ds = train_ds.shuffle(buffer_size=shuffle_buffer_size)
+    batch_size = 1024
+    train_ds = train_ds.batch(batch_size=batch_size)
+
+    test_ds = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(batch_size)
+
+    return train_ds, test_ds
 
 
 if __name__ == "__main__":
