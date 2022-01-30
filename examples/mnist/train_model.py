@@ -26,11 +26,13 @@ def train_model():
     def train_step(images, target_vectors):
         with tf.GradientTape() as tape:
             predictions = model(images)
-            loss = loss_object(target_vectors, predictions)
-        gradients = tape.gradient(loss, model.trainable_variables)
+            prediction_loss = loss_object(target_vectors, predictions)
+            regularization_loss = tf.math.add_n(model.losses)
+            total_loss = prediction_loss + regularization_loss
+        gradients = tape.gradient(total_loss, model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 
-        train_loss(loss)
+        train_loss(total_loss)
         train_accuracy(target_vectors, predictions)
 
     @tf.function
@@ -66,7 +68,9 @@ def train_model():
 class MyModel(Model):
     def __init__(self):
         super(MyModel, self).__init__()
-        self.conv1 = Conv2D(32, 3, activation="relu")
+        self.conv1 = Conv2D(
+            32, 3, activation="relu", kernel_regularizer=tf.keras.regularizers.l2(5e-4)
+        )
         self.flatten = Flatten()
         self.d1 = Dense(128, activation="relu")
         self.d2 = Dense(10, activation="sigmoid")
