@@ -7,6 +7,8 @@ from tensorflow.keras.layers import Conv2D, Dense, Flatten
 
 from examples.utils import get_y_true, set_gpu_memory_growth
 
+eps = tf.keras.backend.epsilon()
+
 
 def train_model():
     set_gpu_memory_growth()
@@ -24,6 +26,9 @@ def train_model():
 
     positive_ratio = _get_positive_ratio(train_ds).astype(np.float32)
     ideal_positive_ratio = np.full_like(positive_ratio, 0.5).astype(np.float32)
+    change_rate = 1e-2
+    n_bins = 10
+    n_classes = 10
 
     @tf.function
     def train_step(images, target_vectors, mask):
@@ -38,6 +43,7 @@ def train_model():
 
         train_loss(total_loss)
         train_accuracy(target_vectors, predictions)
+        return predictions
 
     @tf.function
     def test_step(images, target_vectors):
@@ -47,11 +53,37 @@ def train_model():
         test_loss(t_loss)
         test_accuracy(target_vectors, predictions)
 
-    n_epochs = 5
+    n_epochs = 10
     for epoch in range(n_epochs):
+        hist_pos_true = np.zeros((n_bins, n_classes))
+        hist_pos_pred = np.zeros((n_bins, n_classes))
+        hist_neg_true = np.zeros((n_bins, n_classes))
+        hist_neg_pred = np.zeros((n_bins, n_classes))
+
         for images, target_vectors in train_ds:
+            # generate mask
             mask = generate_mask(target_vectors, positive_ratio, ideal_positive_ratio)
-            train_step(images, target_vectors, mask)
+
+            # make predictions
+            predictions = train_step(images, target_vectors, mask)
+
+            # compute and accumulate histogram
+            (
+                _hist_pos_true,
+                _hist_neg_true,
+                _hist_pos_pred,
+                _hist_neg_pred,
+            ) = compute_histogram(target_vectors, predictions, n_bins)
+            hist_pos_true += _hist_pos_true
+            hist_neg_true += _hist_neg_true
+            hist_pos_pred += _hist_pos_pred
+            hist_neg_pred += _hist_neg_pred
+
+        # update ideal positive ratio
+        prob_diff = compute_probabilities_difference(
+            hist_pos_true, hist_pos_pred, hist_neg_true, hist_neg_pred
+        )
+        ideal_positive_ratio *= np.exp(change_rate * prob_diff)
 
         for test_images, test_target_vectors in test_ds:
             test_step(test_images, test_target_vectors)
@@ -128,6 +160,81 @@ def multi_hot_with_prob(prob, shape):
     )
 
 
+def compute_histogram(y_true: np.ndarray, y_pred: np.ndarray, n_bins: int):
+    n_classes = y_true.shape[1]
+    value_range = [0.0, 1.0]
+
+    hist_pos_true = np.zeros((n_bins, n_classes), np.int)
+    hist_neg_true = np.zeros((n_bins, n_classes), np.int)
+    hist_pos_pred = np.zeros((n_bins, n_classes), np.int)
+    hist_neg_pred = np.zeros((n_bins, n_classes), np.int)
+
+    for class_i in range(n_classes):
+        y_true_class = y_true[:, class_i]
+        y_pred_class = y_pred[:, class_i]
+
+        pos_indices = y_true_class > 0
+        neg_indices = ~pos_indices
+
+        # NOTE: np.histogram returns *hist* and *bin_edges*
+        hist_pos_true[:, class_i], _ = np.histogram(
+            y_true_class[pos_indices], n_bins, value_range
+        )
+        hist_neg_true[:, class_i], _ = np.histogram(
+            y_true_class[neg_indices], n_bins, value_range
+        )
+        hist_pos_pred[:, class_i], _ = np.histogram(
+            y_pred_class[pos_indices], n_bins, value_range
+        )
+        hist_neg_pred[:, class_i], _ = np.histogram(
+            y_pred_class[neg_indices], n_bins, value_range
+        )
+
+    return hist_pos_true, hist_neg_true, hist_pos_pred, hist_neg_pred
+
+
+def compute_probabilities_difference(
+    hist_pos_true, hist_pos_pred, hist_neg_true, hist_neg_pred
+):
+    hist_diff_pos = _compute_probabilities_difference(hist_pos_true, hist_pos_pred)
+    hist_diff_neg = _compute_probabilities_difference(hist_neg_true, hist_neg_pred)
+
+    # normalize
+    hist_diff_pos = (hist_diff_pos - np.mean(hist_diff_pos)) / (
+        np.std(hist_diff_pos) + eps
+    )
+    hist_diff_neg = (hist_diff_neg - np.mean(hist_diff_neg)) / (
+        np.std(hist_diff_neg) + eps
+    )
+
+    return hist_diff_pos - hist_diff_neg
+
+
+def _compute_probabilities_difference(hist_true, hist_pred):
+    # normalize histogram
+    hist_true /= np.sum(hist_true, axis=0)
+    hist_pred /= np.sum(hist_pred, axis=0)
+
+    kl_div = _kullback_leibler_divergence(hist_pred, hist_true)
+    return kl_div
+
+
+def _kullback_leibler_divergence(p, q):
+    """
+    Kullback-Leibler divergence.
+
+    Args:
+        p, q: discrete probability distributions, whose shape is (n_bins, n_classes)
+
+    Returns:
+        kl_div: Kullback-Leibler divergence (relative entropy from q to p)
+    """
+    # FIXME: affirm calculation of KL divergence when q contains zero(s).
+    q = np.where(q > 0, q, eps)
+    kl_div = np.sum(p * np.log(p / q + eps), axis=0)
+    return kl_div
+
+
 def _get_positive_ratio(ds):
     y = get_y_true(ds)
     n_samples = len(y)
@@ -150,8 +257,6 @@ def _create_train_and_test_datasets() -> Tuple[Any, Any]:
     )
     y_train = encoder(y_train.astype(np.int64))
     y_test = encoder(y_test.astype(np.int64))
-    y_train = y_train[..., tf.newaxis]
-    y_test = y_test[..., tf.newaxis]
 
     train_ds = tf.data.Dataset.zip(
         (
