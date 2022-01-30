@@ -1,5 +1,6 @@
 from typing import Any, Tuple
 
+import numpy as np
 import tensorflow as tf
 from tensorflow.keras import Model
 from tensorflow.keras.layers import Conv2D, Dense, Flatten
@@ -13,40 +14,40 @@ def train_model():
     train_ds, test_ds = _create_train_and_test_datasets()
 
     model = MyModel()
-    loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
+    loss_object = tf.keras.losses.BinaryCrossentropy()
     optimizer = tf.keras.optimizers.Adam()
 
     train_loss = tf.keras.metrics.Mean(name="train_loss")
-    train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name="train_accuracy")
+    train_accuracy = tf.keras.metrics.BinaryAccuracy(name="train_accuracy")
     test_loss = tf.keras.metrics.Mean(name="test_loss")
-    test_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name="test_accuracy")
+    test_accuracy = tf.keras.metrics.BinaryAccuracy(name="test_accuracy")
 
     @tf.function
-    def train_step(images, labels):
+    def train_step(images, target_vectors):
         with tf.GradientTape() as tape:
             predictions = model(images)
-            loss = loss_object(labels, predictions)
+            loss = loss_object(target_vectors, predictions)
         gradients = tape.gradient(loss, model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 
         train_loss(loss)
-        train_accuracy(labels, predictions)
+        train_accuracy(target_vectors, predictions)
 
     @tf.function
-    def test_step(images, labels):
+    def test_step(images, target_vectors):
         predictions = model(images)
-        t_loss = loss_object(labels, predictions)
+        t_loss = loss_object(target_vectors, predictions)
 
         test_loss(t_loss)
-        test_accuracy(labels, predictions)
+        test_accuracy(target_vectors, predictions)
 
     n_epochs = 5
     for epoch in range(n_epochs):
-        for images, labels in train_ds:
-            train_step(images, labels)
+        for images, target_vectors in train_ds:
+            train_step(images, target_vectors)
 
-        for test_images, test_labels in test_ds:
-            test_step(test_images, test_labels)
+        for test_images, test_target_vectors in test_ds:
+            test_step(test_images, test_target_vectors)
 
         print(
             f"Epoch {epoch}, "
@@ -68,7 +69,7 @@ class MyModel(Model):
         self.conv1 = Conv2D(32, 3, activation="relu")
         self.flatten = Flatten()
         self.d1 = Dense(128, activation="relu")
-        self.d2 = Dense(10, activation="softmax")
+        self.d2 = Dense(10, activation="sigmoid")
 
     def call(self, x):
         x = self.conv1(x)
@@ -82,17 +83,35 @@ def _create_train_and_test_datasets() -> Tuple[Any, Any]:
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
     x_train, x_test = x_train / 255.0, x_test / 255.0
-
     x_train = x_train[..., tf.newaxis]
     x_test = x_test[..., tf.newaxis]
 
-    train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train))
+    n_classes = 10
+    encoder = tf.keras.layers.CategoryEncoding(
+        num_tokens=n_classes, output_mode="one_hot"
+    )
+    y_train = encoder(y_train.astype(np.int64))
+    y_test = encoder(y_test.astype(np.int64))
+    y_train = y_train[..., tf.newaxis]
+    y_test = y_test[..., tf.newaxis]
+
+    train_ds = tf.data.Dataset.zip(
+        (
+            tf.data.Dataset.from_tensor_slices(x_train),
+            tf.data.Dataset.from_tensor_slices(y_train),
+        )
+    )
     shuffle_buffer_size = len(train_ds)
     train_ds = train_ds.shuffle(buffer_size=shuffle_buffer_size)
     batch_size = 1024
     train_ds = train_ds.batch(batch_size=batch_size)
 
-    test_ds = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(batch_size)
+    test_ds = tf.data.Dataset.zip(
+        (
+            tf.data.Dataset.from_tensor_slices(x_test),
+            tf.data.Dataset.from_tensor_slices(y_test),
+        )
+    ).batch(batch_size)
 
     return train_ds, test_ds
 
