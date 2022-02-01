@@ -6,6 +6,7 @@ from tensorflow.keras import Model
 from tensorflow.keras.layers import Conv2D, Dense, Flatten
 
 from examples.utils import get_y_true, set_gpu_memory_growth
+from plm import ProbabilityHistograms
 
 eps = tf.keras.backend.epsilon()
 
@@ -53,12 +54,11 @@ def train_model():
         test_loss(t_loss)
         test_accuracy(target_vectors, predictions)
 
+    hist = ProbabilityHistograms(n_classes=n_classes, n_bins=n_bins)
+
     n_epochs = 10
     for epoch in range(n_epochs):
-        hist_pos_true = np.zeros((n_bins, n_classes))
-        hist_pos_pred = np.zeros((n_bins, n_classes))
-        hist_neg_true = np.zeros((n_bins, n_classes))
-        hist_neg_pred = np.zeros((n_bins, n_classes))
+        hist.reset()
 
         for images, target_vectors in train_ds:
             # generate mask
@@ -68,22 +68,11 @@ def train_model():
             predictions = train_step(images, target_vectors, mask)
 
             # compute and accumulate histogram
-            (
-                _hist_pos_true,
-                _hist_neg_true,
-                _hist_pos_pred,
-                _hist_neg_pred,
-            ) = compute_histogram(target_vectors, predictions, n_bins)
-            hist_pos_true += _hist_pos_true
-            hist_neg_true += _hist_neg_true
-            hist_pos_pred += _hist_pos_pred
-            hist_neg_pred += _hist_neg_pred
+            hist.update_histogram(target_vectors, predictions)
 
         # update ideal positive ratio
-        prob_diff = compute_probabilities_difference(
-            hist_pos_true, hist_pos_pred, hist_neg_true, hist_neg_pred
-        )
-        ideal_positive_ratio *= np.exp(change_rate * prob_diff)
+        divergence_difference = hist.divergence_difference()
+        ideal_positive_ratio *= np.exp(change_rate * divergence_difference)
 
         for test_images, test_target_vectors in test_ds:
             test_step(test_images, test_target_vectors)
@@ -158,81 +147,6 @@ def multi_hot_with_prob(prob, shape):
     return tf.where(
         tf.random.uniform(shape=shape, minval=0.0, maxval=1.0) <= prob, 1, 0
     )
-
-
-def compute_histogram(y_true: np.ndarray, y_pred: np.ndarray, n_bins: int):
-    n_classes = y_true.shape[1]
-    value_range = [0.0, 1.0]
-
-    hist_pos_true = np.zeros((n_bins, n_classes), np.int)
-    hist_neg_true = np.zeros((n_bins, n_classes), np.int)
-    hist_pos_pred = np.zeros((n_bins, n_classes), np.int)
-    hist_neg_pred = np.zeros((n_bins, n_classes), np.int)
-
-    for class_i in range(n_classes):
-        y_true_class = y_true[:, class_i]
-        y_pred_class = y_pred[:, class_i]
-
-        pos_indices = y_true_class > 0
-        neg_indices = ~pos_indices
-
-        # NOTE: np.histogram returns *hist* and *bin_edges*
-        hist_pos_true[:, class_i], _ = np.histogram(
-            y_true_class[pos_indices], n_bins, value_range
-        )
-        hist_neg_true[:, class_i], _ = np.histogram(
-            y_true_class[neg_indices], n_bins, value_range
-        )
-        hist_pos_pred[:, class_i], _ = np.histogram(
-            y_pred_class[pos_indices], n_bins, value_range
-        )
-        hist_neg_pred[:, class_i], _ = np.histogram(
-            y_pred_class[neg_indices], n_bins, value_range
-        )
-
-    return hist_pos_true, hist_neg_true, hist_pos_pred, hist_neg_pred
-
-
-def compute_probabilities_difference(
-    hist_pos_true, hist_pos_pred, hist_neg_true, hist_neg_pred
-):
-    hist_diff_pos = _compute_probabilities_difference(hist_pos_true, hist_pos_pred)
-    hist_diff_neg = _compute_probabilities_difference(hist_neg_true, hist_neg_pred)
-
-    # normalize
-    hist_diff_pos = (hist_diff_pos - np.mean(hist_diff_pos)) / (
-        np.std(hist_diff_pos) + eps
-    )
-    hist_diff_neg = (hist_diff_neg - np.mean(hist_diff_neg)) / (
-        np.std(hist_diff_neg) + eps
-    )
-
-    return hist_diff_pos - hist_diff_neg
-
-
-def _compute_probabilities_difference(hist_true, hist_pred):
-    # normalize histogram
-    hist_true /= np.sum(hist_true, axis=0)
-    hist_pred /= np.sum(hist_pred, axis=0)
-
-    kl_div = _kullback_leibler_divergence(hist_pred, hist_true)
-    return kl_div
-
-
-def _kullback_leibler_divergence(p, q):
-    """
-    Kullback-Leibler divergence.
-
-    Args:
-        p, q: discrete probability distributions, whose shape is (n_bins, n_classes)
-
-    Returns:
-        kl_div: Kullback-Leibler divergence (relative entropy from q to p)
-    """
-    # FIXME: affirm calculation of KL divergence when q contains zero(s).
-    q = np.where(q > 0, q, eps)
-    kl_div = np.sum(p * np.log(p / q + eps), axis=0)
-    return kl_div
 
 
 def _get_positive_ratio(ds):
