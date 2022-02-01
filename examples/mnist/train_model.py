@@ -6,7 +6,7 @@ from tensorflow.keras import Model
 from tensorflow.keras.layers import Conv2D, Dense, Flatten
 
 from examples.utils import get_y_true, set_gpu_memory_growth
-from plm import ProbabilityHistograms
+from plm import ProbabilityHistograms, generate_mask
 
 eps = tf.keras.backend.epsilon()
 
@@ -58,8 +58,6 @@ def train_model():
 
     n_epochs = 10
     for epoch in range(n_epochs):
-        hist.reset()
-
         for images, target_vectors in train_ds:
             # generate mask
             mask = generate_mask(target_vectors, positive_ratio, ideal_positive_ratio)
@@ -85,6 +83,7 @@ def train_model():
             f"Test Accuracy: {test_accuracy.result():.4f}"
         )
 
+        hist.reset()
         train_loss.reset_states()
         train_accuracy.reset_states()
         test_loss.reset_states()
@@ -106,47 +105,6 @@ class MyModel(Model):
         x = self.flatten(x)
         x = self.d1(x)
         return self.d2(x)
-
-
-def generate_mask(y_true, positive_ratio, positive_ratio_ideal):
-    n_samples = y_true.shape[0]
-
-    over_predicted = tf.stack([positive_ratio > positive_ratio_ideal] * n_samples)
-    under_predicted = tf.math.logical_not(over_predicted)
-
-    prob_for_over_predicted = tf.stack(
-        [positive_ratio_ideal / positive_ratio] * n_samples
-    )
-    prob_for_under_predicted = 1.0 / prob_for_over_predicted
-
-    ones_for_over_predicted = multi_hot_with_prob(
-        prob_for_over_predicted, shape=y_true.shape
-    )
-    ones_for_under_predicted = multi_hot_with_prob(
-        prob_for_under_predicted, shape=y_true.shape
-    )
-
-    mask = tf.where((y_true > 0) & over_predicted, ones_for_over_predicted, 1)
-    mask = tf.where((y_true == 0) & under_predicted, ones_for_under_predicted, mask)
-
-    return mask
-
-
-def multi_hot_with_prob(prob, shape):
-    """
-    Generate tensor where some elements are 1 with a certain probability
-    *prob* and the others is 0.
-
-    Args:
-        prob: probability. [0, 1]
-        shape: output shape.
-
-    Returns:
-        ones_with_probability: tensor whose shape is *shape*.
-    """
-    return tf.where(
-        tf.random.uniform(shape=shape, minval=0.0, maxval=1.0) <= prob, 1, 0
-    )
 
 
 def _get_positive_ratio(ds):

@@ -1,7 +1,53 @@
 import numpy as np
 from numpy.testing import assert_allclose
+from pytest_mock import MockerFixture
 
-from plm import ProbabilityHistograms
+from plm import ProbabilityHistograms, generate_mask, multi_hot_with_prob
+
+
+def test_generate_mask(mocker: MockerFixture):
+    # n_classes = 3
+    # n_samples = 2
+
+    def fixed_multi_hot(prob: np.ndarray):
+        return np.where(prob >= 0.8, 1, 0)
+
+    mock_multi_hot_with_prob = mocker.patch(
+        "plm.multi_hot_with_prob", side_effect=fixed_multi_hot
+    )
+
+    # class[0] is head (frequent)
+    # class[1] is tail (infrequent)
+    # class[2] is medium
+    positive_ratio = np.array([0.8, 0.1, 0.5])
+    positive_ratio_ideal = np.array([0.6, 0.4, 0.5])
+    # ideal / real = [0.75, 4,    1]
+    # real / ideal = [1.33, 0.25, 1]
+
+    # fmt: off
+    y_true = np.array([
+        [1, 0, 1],
+        [0, 1, 0],
+    ])
+    # loss for head class's positive and tail class's negative should be masked
+    # (multiplied by zero)
+    mask_expect = np.array([
+        [0, 0, 1],
+        [1, 1, 1],
+    ])
+    # fmt: on
+
+    mask_actual = generate_mask(y_true, positive_ratio, positive_ratio_ideal)
+    mock_multi_hot_with_prob.assert_called()
+    assert_allclose(mask_actual, mask_expect)
+
+
+def test_multi_hot_with_prob():
+    prob = np.array([[0.1, 0.9, 0.7], [0.2, 0.3, 0.6]])
+    multi_hot = multi_hot_with_prob(prob)
+    assert multi_hot.shape == prob.shape
+    assert multi_hot.dtype == np.int
+    assert ((multi_hot == 0) | (multi_hot == 1)).all()
 
 
 class TestProbabilityHistograms:
