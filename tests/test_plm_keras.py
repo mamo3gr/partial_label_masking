@@ -3,7 +3,7 @@ import tensorflow as tf
 from numpy.testing import assert_allclose
 from pytest_mock import MockerFixture
 
-from plm import PartialLabelMaskingCallback, PartialLabelMaskingLoss
+from plm_keras import PartialLabelMaskingCallback, PartialLabelMaskingLoss
 
 
 class TestPartialLabelMaskingLoss:
