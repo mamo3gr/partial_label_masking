@@ -31,6 +31,14 @@ def train_model():
     n_bins = 10
     n_classes = 10
 
+    invoked_date = date_string()
+    train_summary_writer = tf.summary.create_file_writer(
+        logdir=f"./logs/mnist/{invoked_date}/train"
+    )
+    test_summary_writer = tf.summary.create_file_writer(
+        logdir=f"./logs/mnist/{invoked_date}/test"
+    )
+
     @tf.function
     def train_step(images, target_vectors, mask):
         with tf.GradientTape() as tape:
@@ -59,21 +67,23 @@ def train_model():
     n_epochs = 10
     for epoch in range(n_epochs):
         for images, target_vectors in train_ds:
-            # generate mask
             mask = generate_mask(target_vectors, positive_ratio, ideal_positive_ratio)
-
-            # make predictions
             predictions = train_step(images, target_vectors, mask)
-
-            # compute and accumulate histogram
             hist.update_histogram(target_vectors, predictions)
 
-        # update ideal positive ratio
         divergence_difference = hist.divergence_difference()
         ideal_positive_ratio *= np.exp(change_rate * divergence_difference)
 
+        with train_summary_writer.as_default():
+            tf.summary.scalar("loss", train_loss.result(), step=epoch)
+            tf.summary.scalar("accuracy", train_accuracy.result(), step=epoch)
+
         for test_images, test_target_vectors in test_ds:
             test_step(test_images, test_target_vectors)
+
+        with test_summary_writer.as_default():
+            tf.summary.scalar("loss", test_loss.result(), step=epoch)
+            tf.summary.scalar("accuracy", test_accuracy.result(), step=epoch)
 
         print(
             f"Epoch {epoch}, "
@@ -82,6 +92,9 @@ def train_model():
             f"Test Loss: {test_loss.result():.4f}, "
             f"Test Accuracy: {test_accuracy.result():.4f}"
         )
+
+        with np.printoptions(precision=3, threshold=n_classes):
+            print(f"ideal_positive_ratio: {ideal_positive_ratio}")
 
         hist.reset()
         train_loss.reset_states()
