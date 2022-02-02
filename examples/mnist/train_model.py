@@ -5,10 +5,8 @@ import tensorflow as tf
 from tensorflow.keras import Model
 from tensorflow.keras.layers import Conv2D, Dense, Flatten
 
-from examples.utils import get_y_true, set_gpu_memory_growth
+from examples.utils import date_string, get_positive_ratio, set_gpu_memory_growth
 from plm import ProbabilityHistograms, generate_mask
-
-eps = tf.keras.backend.epsilon()
 
 
 def train_model():
@@ -25,7 +23,7 @@ def train_model():
     test_loss = tf.keras.metrics.Mean(name="test_loss")
     test_accuracy = tf.keras.metrics.BinaryAccuracy(name="test_accuracy")
 
-    positive_ratio = _get_positive_ratio(train_ds).astype(np.float32)
+    positive_ratio = get_positive_ratio(train_ds).astype(np.float32)
     ideal_positive_ratio = np.full_like(positive_ratio, 0.5).astype(np.float32)
     change_rate = 1e-2
     n_bins = 10
@@ -118,14 +116,6 @@ class MyModel(Model):
         x = self.flatten(x)
         x = self.d1(x)
         return self.d2(x)
-
-
-def _get_positive_ratio(ds):
-    y = get_y_true(ds)
-    n_samples = len(y)
-    n_positives = np.sum(y > 0, axis=0)
-    positive_ratio = n_positives / n_samples
-    return positive_ratio
 
 
 def _create_train_and_test_datasets() -> Tuple[Any, Any]:
