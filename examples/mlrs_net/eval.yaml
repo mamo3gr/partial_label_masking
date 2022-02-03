@@ -64,7 +64,7 @@ labels:
   - wind turbine
 image_height: 224
 image_width: 224
-batch_size: 256
+batch_size: 64
 random_seed: 42
 validation_ratio: 0.333
 weight_decay: 5.0e-4
