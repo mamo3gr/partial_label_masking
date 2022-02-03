@@ -1,16 +1,20 @@
 from argparse import ArgumentParser
+from copy import deepcopy
 from logging import INFO, basicConfig, getLogger
-from typing import Any, List, Tuple
+from typing import Any, Tuple
 
+import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.utils import Progbar
 
 from examples.config import Config, load_config
 from examples.dataframe_loader import DataFrameLoader
 from examples.dataset_generator import DatasetGenerator
 from examples.model import create_model
-from examples.utils import date_string, set_gpu_memory_growth
+from examples.utils import date_string, get_positive_ratio, set_gpu_memory_growth
+from plm import ProbabilityHistograms, generate_mask
 
 logger = getLogger(__name__)
 
@@ -21,36 +25,85 @@ def train_model(conf: Config):
 
     train_ds, valid_ds = _create_train_valid_set(conf)
     model = _create_model(conf)
+    loss_object = tf.keras.losses.BinaryCrossentropy()
     optimizer = Adam(learning_rate=1e-3)
-    callbacks = _create_callbacks(conf)
 
+    train_loss = tf.keras.metrics.Mean(name="train_loss")
+    train_accuracy = tf.keras.metrics.BinaryAccuracy(name="train_accuracy")
+    valid_loss = tf.keras.metrics.Mean(name="valid_loss")
+    valid_accuracy = tf.keras.metrics.BinaryAccuracy(name="valid_accuracy")
+
+    positive_ratio = get_positive_ratio(train_ds).astype(np.float32)
+    ideal_positive_ratio = deepcopy(positive_ratio)
+    change_rate = 1e-2
+    n_bins = 10
     labels = conf.labels
     n_classes = len(labels)
-    metrics = (
-        ["binary_accuracy"]
-        + [
-            tf.keras.metrics.Precision(class_id=i, name=f"precision_{labels[i]}")
-            for i in range(n_classes)
-        ]
-        + [
-            tf.keras.metrics.Recall(class_id=i, name=f"recall_{labels[i]}")
-            for i in range(n_classes)
-        ]
-    )
+    hist = ProbabilityHistograms(n_classes=n_classes, n_bins=n_bins)
 
-    model.compile(
-        optimizer=optimizer,
-        loss="binary_crossentropy",
-        metrics=metrics,
-    )
-    model.fit(
-        train_ds,
-        batch_size=conf.batch_size,
-        epochs=conf.epochs,
-        validation_data=valid_ds,
-        callbacks=callbacks,
-        verbose=2,
-    )
+    train_summary_writer, valid_summary_writer = _setup_summary_writers()
+
+    n_epochs = conf.epochs
+
+    @tf.function
+    def train_step(images, target_vectors, mask):
+        with tf.GradientTape() as tape:
+            predictions = model(images, training=True)
+            prediction_loss = loss_object(target_vectors, predictions)
+            prediction_loss *= tf.cast(mask, prediction_loss.dtype)
+            regularization_loss = tf.math.add_n(model.losses)
+            total_loss = prediction_loss + tf.cast(
+                regularization_loss, prediction_loss.dtype
+            )
+        gradients = tape.gradient(total_loss, model.trainable_variables)
+        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+
+        train_loss(total_loss)
+        train_accuracy(target_vectors, predictions)
+        return predictions
+
+    @tf.function
+    def valid_step(images, target_vectors):
+        predictions = model(images)
+        v_loss = loss_object(target_vectors, predictions)
+
+        valid_loss(v_loss)
+        valid_accuracy(target_vectors, predictions)
+
+    n_steps = len(train_ds)
+    for epoch in range(n_epochs):
+        prog_bar = Progbar(n_steps)
+
+        for i_step, (x_train, y_train) in enumerate(train_ds):
+            mask = generate_mask(y_train, positive_ratio, ideal_positive_ratio)
+            predictions = train_step(x_train, y_train, mask)
+            hist.update_histogram(y_train, predictions)
+            prog_bar.update(i_step)
+
+        divergence_difference = hist.divergence_difference()
+        ideal_positive_ratio *= np.exp(change_rate * divergence_difference)
+
+        with train_summary_writer.as_default():
+            tf.summary.scalar("loss", train_loss.result(), step=epoch)
+            tf.summary.scalar("accuracy", train_accuracy.result(), step=epoch)
+
+        for x_valid, y_valid in valid_ds:
+            valid_step(x_valid, y_valid)
+
+        with valid_summary_writer.as_default():
+            tf.summary.scalar("loss", valid_loss.result(), step=epoch)
+            tf.summary.scalar("accuracy", valid_accuracy.result(), step=epoch)
+
+        prog_bar.update(n_steps, finalize=True)
+
+        with np.printoptions(precision=3, threshold=n_classes):
+            print(f"ideal_positive_ratio: {ideal_positive_ratio}")
+
+        hist.reset()
+        train_loss.reset_states()
+        train_accuracy.reset_states()
+        valid_loss.reset_states()
+        valid_accuracy.reset_states()
 
 
 def _create_train_valid_set(conf: Config) -> Tuple[Any, Any]:
@@ -105,22 +158,17 @@ def _create_model(conf: Config):
     return model
 
 
-def _create_callbacks(conf: Config) -> List[Any]:
-    model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
-        conf.model_path, monitor="val_loss", save_best_only=conf.save_best_only
+def _setup_summary_writers() -> Tuple[Any, Any]:
+    example_name = "mlrs_net"
+    invoked_date = date_string()
+    train_summary_writer = tf.summary.create_file_writer(
+        logdir=f"./logs/{example_name}/{invoked_date}/train"
+    )
+    valid_summary_writer = tf.summary.create_file_writer(
+        logdir=f"./logs/{example_name}/{invoked_date}/valid"
     )
 
-    log_dir = f"./logs/{date_string()}"
-    tensorboard_callback = tf.keras.callbacks.TensorBoard(
-        log_dir=log_dir, profile_batch=(10, 20)
-    )
-
-    callbacks = [
-        model_checkpoint,
-        tensorboard_callback,
-    ]
-
-    return callbacks
+    return train_summary_writer, valid_summary_writer
 
 
 def _parse_args():
