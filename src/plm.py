@@ -53,42 +53,6 @@ class MaskGenerator:
         return mask
 
 
-def generate_mask(y_true, positive_ratio, positive_ratio_ideal):
-    is_head_class = np.full(
-        y_true.shape, positive_ratio > positive_ratio_ideal, np.bool
-    )
-    is_tail_class = np.logical_not(is_head_class)
-
-    mask_for_head_class = multi_hot_with_prob(
-        np.full(y_true.shape, positive_ratio_ideal / positive_ratio)
-    )
-    mask_for_tail_class = multi_hot_with_prob(
-        np.full(y_true.shape, positive_ratio / positive_ratio_ideal)
-    )
-
-    mask = np.ones_like(y_true)
-    mask = np.where(is_head_class & (y_true > 0), mask_for_head_class, mask)
-    mask = np.where(is_tail_class & (y_true == 0), mask_for_tail_class, mask)
-
-    return mask
-
-
-def multi_hot_with_prob(prob: np.ndarray) -> np.ndarray:
-    """
-    Generate multi-hot vector where some elements are 1 with a certain probability
-    *prob* and the others is 0.
-
-    Args:
-        prob: probability. [0, 1]
-
-    Returns:
-        ones_with_probability (np.ndarray): whose shape is the same as *prob*
-    """
-    return np.where(
-        np.random.uniform(low=0.0, high=1.0, size=prob.shape) <= prob, 1, 0
-    ).astype(np.int)
-
-
 class ProbabilityHistograms:
     def __init__(self, n_classes: int, n_bins: int = 10):
         self.n_classes = n_classes
