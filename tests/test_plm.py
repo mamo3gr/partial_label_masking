@@ -40,6 +40,10 @@ class FixedMultiHotGenerator(RandomMultiHotGenerator):
 
 
 class TestMaskGenerator:
+    def test_setup_default_generator(self):
+        gen = MaskGenerator()
+        assert isinstance(gen.generator, RandomMultiHotGenerator)
+
     def test_generate_mask(self, mocker: MockerFixture):
         # n_classes = 3
         # n_samples = 2
