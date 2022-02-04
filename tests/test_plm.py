@@ -2,7 +2,6 @@ from itertools import combinations
 
 import numpy as np
 from numpy.testing import assert_allclose
-from pytest_mock import MockerFixture
 
 from plm import MaskGenerator, ProbabilityHistograms, RandomMultiHotGenerator
 
@@ -44,7 +43,7 @@ class TestMaskGenerator:
         gen = MaskGenerator()
         assert isinstance(gen.generator, RandomMultiHotGenerator)
 
-    def test_generate_mask(self, mocker: MockerFixture):
+    def test_generate_mask(self):
         # n_classes = 3
         # n_samples = 2
 
