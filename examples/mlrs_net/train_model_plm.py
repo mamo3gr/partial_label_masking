@@ -14,7 +14,7 @@ from examples.mlrs_net.train_model import (
     _setup_summary_writers,
 )
 from examples.utils import get_positive_ratio, set_gpu_memory_growth
-from src.plm import ProbabilityHistograms, generate_mask
+from src.plm import MaskGenerator, ProbabilityHistograms, RandomMultiHotGenerator
 
 logger = getLogger(__name__)
 
@@ -40,6 +40,9 @@ def train_model(conf: Config):
     labels = conf.labels
     n_classes = len(labels)
     hist = ProbabilityHistograms(n_classes=n_classes, n_bins=n_bins)
+    mask_generator = MaskGenerator(
+        generator=RandomMultiHotGenerator(seed=conf.random_seed)
+    )
 
     train_summary_writer, valid_summary_writer = _setup_summary_writers()
 
@@ -76,7 +79,9 @@ def train_model(conf: Config):
         prog_bar = Progbar(n_steps)
 
         for i_step, (x_train, y_train) in enumerate(train_ds):
-            mask = generate_mask(y_train, positive_ratio, ideal_positive_ratio)
+            mask = mask_generator.generate(
+                y_train, positive_ratio, ideal_positive_ratio
+            )
             predictions = train_step(x_train, y_train, mask)
             hist.update_histogram(y_train, predictions)
             prog_bar.update(i_step)

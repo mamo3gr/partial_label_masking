@@ -6,7 +6,7 @@ from tensorflow.keras import Model
 from tensorflow.keras.layers import Conv2D, Dense, Flatten
 
 from examples.utils import date_string, get_positive_ratio, set_gpu_memory_growth
-from plm import ProbabilityHistograms, generate_mask
+from plm import MaskGenerator, ProbabilityHistograms, RandomMultiHotGenerator
 
 
 def train_model():
@@ -60,12 +60,16 @@ def train_model():
         test_loss(t_loss)
         test_accuracy(target_vectors, predictions)
 
+    random_seed = 42
     hist = ProbabilityHistograms(n_classes=n_classes, n_bins=n_bins)
+    mask_generator = MaskGenerator(generator=RandomMultiHotGenerator(seed=random_seed))
 
     n_epochs = 10
     for epoch in range(n_epochs):
         for images, target_vectors in train_ds:
-            mask = generate_mask(target_vectors, positive_ratio, ideal_positive_ratio)
+            mask = mask_generator.generate(
+                target_vectors, positive_ratio, ideal_positive_ratio
+            )
             predictions = train_step(images, target_vectors, mask)
             hist.update_histogram(target_vectors, predictions)
 
