@@ -56,7 +56,11 @@ class DatasetGenerator:
             self._logger.info(
                 f"Would be shuffled with buffer whose size is {shuffle_buffer_size}"
             )
-            ds = ds.shuffle(buffer_size=shuffle_buffer_size, seed=self.random_seed)
+            ds = ds.shuffle(
+                buffer_size=shuffle_buffer_size,
+                reshuffle_each_iteration=True,
+                seed=self.random_seed,
+            )
 
         ds = ds.map(
             lambda path, y: (self.load_and_preprocess_image(path), y),
