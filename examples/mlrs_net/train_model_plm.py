@@ -92,6 +92,9 @@ def train_model(conf: Config):
         with train_summary_writer.as_default():
             tf.summary.scalar("loss", train_loss.result(), step=epoch)
             tf.summary.scalar("accuracy", train_accuracy.result(), step=epoch)
+            tf.summary.histogram(
+                "divergence difference", divergence_difference, step=epoch
+            )
             for label_i, (label, ratio) in enumerate(zip(labels, ideal_positive_ratio)):
                 tf.summary.scalar(
                     f"positive ratio ideal ({label_i}, {label})", ratio, step=epoch
