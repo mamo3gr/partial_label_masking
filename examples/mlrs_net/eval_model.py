@@ -1,3 +1,4 @@
+import json
 from argparse import ArgumentParser
 from logging import INFO, basicConfig, getLogger
 
@@ -14,7 +15,7 @@ from examples.utils import get_y_true, set_gpu_memory_growth
 logger = getLogger(__name__)
 
 
-def test_model(conf: Config):
+def test_model(conf: Config, output_file):
     set_gpu_memory_growth()
 
     test_ds = _create_test_set(conf)
@@ -24,7 +25,12 @@ def test_model(conf: Config):
     y_pred = np.where(proba >= 0.5, 1, 0)
     y_true = get_y_true(test_ds)
     labels = conf.labels
-    print(classification_report(y_true, y_pred, target_names=labels))
+    report = classification_report(
+        y_true, y_pred, target_names=labels, output_dict=True
+    )
+
+    with open(output_file, "w") as f:
+        json.dump(report, f)
 
 
 def _create_test_set(conf: Config):
@@ -63,6 +69,7 @@ def _create_and_load_model(conf: Config):
 def _parse_args():
     parser = ArgumentParser()
     parser.add_argument("config_file", type=str)
+    parser.add_argument("-o", "--output", type=str, required=True)
     return parser.parse_args()
 
 
@@ -70,4 +77,4 @@ if __name__ == "__main__":
     basicConfig(level=INFO)
     args = _parse_args()
     config = load_config(args.config_file)
-    test_model(config)
+    test_model(config, args.output)

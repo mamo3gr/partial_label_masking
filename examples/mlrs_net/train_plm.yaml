@@ -69,4 +69,4 @@ random_seed: 42
 validation_ratio: 0.333
 weight_decay: 5.0e-4
 epochs: 100
-model_path: models/mlrs_net/weights.hdf5
+model_path: models/mlrs_net/weights_plm.hdf5

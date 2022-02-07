@@ -19,7 +19,6 @@ class Config:
     weight_decay: float
     epochs: int
     model_path: str
-    save_best_only: bool = True
     filename_postfix: str = ""
 
 

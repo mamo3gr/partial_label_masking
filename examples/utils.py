@@ -69,6 +69,14 @@ def date_string():
     return datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
+def get_positive_ratio(dataset: tf.data.Dataset) -> np.ndarray:
+    y = get_y_true(dataset)
+    n_samples = len(y)
+    n_positives = np.sum(y > 0, axis=0)
+    positive_ratio = n_positives / n_samples
+    return positive_ratio
+
+
 def get_y_true(dataset: tf.data.Dataset):
     """
     References:

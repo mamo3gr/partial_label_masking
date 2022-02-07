@@ -1,4 +1,4 @@
-csv_path: /home/mamo/work/MLRSNet/train30.csv
+csv_path: /home/mamo/work/MLRSNet/test70.csv
 image_dir: /home/mamo/work/MLRSNet/Images
 filename_col: image
 labels:
@@ -64,9 +64,9 @@ labels:
   - wind turbine
 image_height: 224
 image_width: 224
-batch_size: 1024
+batch_size: 64
 random_seed: 42
 validation_ratio: 0.333
 weight_decay: 5.0e-4
-epochs: 100
-model_path: models/mlrs_net/weights.hdf5
+epochs: 1
+model_path: models/mlrs_net/weights_plm.hdf5
