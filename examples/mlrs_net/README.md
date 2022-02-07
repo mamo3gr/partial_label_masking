@@ -34,3 +34,24 @@ tensorboard --logdir ./logs
 ```shell
 PYTHONPATH=../../ poetry run python eval_model.py eval.yaml
 ```
+
+## Example run and result
+
+```shell
+cd ../..  # go to repository root
+
+# check commit hash
+git rev-parse HEAD
+3e5fd2e195b0b67f08e6aa19c86788cb5ef5674e
+
+# train model without/with PLM
+PYTHONPATH=$(pwd) poetry run python examples/mlrs_net/train_model.py examples/mlrs_net/train.yaml
+PYTHONPATH=$(pwd) poetry run python examples/mlrs_net/train_model_plm.py examples/mlrs_net/train_plm.yaml
+
+# evaluate each model
+PYTHONPATH=$(pwd) poetry run python examples/mlrs_net/eval_model.py examples/mlrs_net/eval.yaml -o examples/mlrs_net/naive.json
+PYTHONPATH=$(pwd) poetry run python examples/mlrs_net/eval_model.py examples/mlrs_net/eval_plm.yaml -o examples/mlrs_net/plm.json
+
+# open and run compare_metrics.ipynb
+PYTHONPATH=$(pwd) poetry run jupyter notebook
+```
