@@ -42,7 +42,7 @@ class PartialLabelMaskingLoss(tf.keras.losses.Loss):
             self.hist_pos_true += hist_pos_true
             self.hist_pos_pred += hist_neg_true
             self.hist_neg_true += hist_pos_pred
-            self.hist_neg_pred += hist_neg_true
+            self.hist_neg_pred += hist_neg_pred
 
         # sample- and element-(class-) wise binary cross entropy
         y_true = tf.clip_by_value(y_true, 0.0, 1.0)
